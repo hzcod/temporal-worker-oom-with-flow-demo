@@ -1,35 +1,54 @@
-import { proxyActivities } from '@temporalio/workflow'
+import { proxyActivities, log } from '@temporalio/workflow'
 import type * as allActivities from '../activities'
 
-const { greetingActivity, simulateLongTaskActivity } = proxyActivities<
-    typeof allActivities
->({
-    startToCloseTimeout: '5 minute',
+const { greetingActivity } = proxyActivities<typeof allActivities>({
+    startToCloseTimeout: '1 minute',
 })
+
+const { simulateCpuHeavyActivity, simulateMemoryHeavyActivity } =
+    proxyActivities<typeof allActivities>({
+        taskQueue: 'heavy-duty-tasks',
+        startToCloseTimeout: '10 minutes',
+        heartbeatTimeout: '1 minute',
+    })
 
 export const WORKFLOW_TWO_NAME = 'WorkflowTypeTwo'
 
-export async function workflowTwo(clientNameArgument: string): Promise<string> {
-    console.log(
-        `[WorkflowTwo] Started for client argument: ${clientNameArgument}`
-    )
+export interface HeavyWorkflowArgs {
+    clientName: string
+    cpuIterations: number
+    cpuYieldFrequency: number
+    memoryArraySize: number
+}
 
-    const greetingResult = await greetingActivity(
-        `WorkflowTwoUser-${clientNameArgument}`
-    )
-    console.log(`[WorkflowTwo] Greeting result: ${greetingResult}`)
+export async function workflowTwo(args: HeavyWorkflowArgs): Promise<string> {
+    log.info(`[WorkflowTwo] Started for client: ${args.clientName}`, {
+        ...args,
+    })
 
-    const threeMinutesInMs = 3 * 60 * 1000
-    console.log(
-        `[WorkflowTwo] About to start a long task for approximately 3 minutes.`
+    const greeting = await greetingActivity(
+        `WorkflowTwoUser-${args.clientName}`
     )
-    const longTaskResult = await simulateLongTaskActivity(
-        'WF2-MainTask',
-        threeMinutesInMs
-    )
-    console.log(`[WorkflowTwo] Long task result: ${longTaskResult}`)
+    log.info(`[WorkflowTwo] Greeting: ${greeting}`)
 
-    const finalMessage = `WorkflowTwo for ${clientNameArgument} completed. Greeting: ${greetingResult}. Long Task: ${longTaskResult}`
-    console.log(`[WorkflowTwo] Completed. Final Message: ${finalMessage}`)
+    log.info(`[WorkflowTwo] Delegating CPU-heavy task to specialized worker...`)
+    const cpuResult = await simulateCpuHeavyActivity(
+        `WF2-CPU-${args.clientName}`,
+        args.cpuIterations,
+        args.cpuYieldFrequency
+    )
+    log.info(`[WorkflowTwo] CPU-heavy task result: ${cpuResult}`)
+
+    log.info(
+        `[WorkflowTwo] Delegating Memory-heavy task to specialized worker...`
+    )
+    const memoryResult = await simulateMemoryHeavyActivity(
+        `WF2-Memory-${args.clientName}`,
+        args.memoryArraySize
+    )
+    log.info(`[WorkflowTwo] Memory-heavy task result: ${memoryResult}`)
+
+    const finalMessage = `WorkflowTwo for ${args.clientName} completed all tasks.`
+    log.info(`[WorkflowTwo] ${finalMessage}`)
     return finalMessage
 }

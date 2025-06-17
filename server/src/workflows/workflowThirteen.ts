@@ -1,18 +1,20 @@
 import { proxyActivities, log } from '@temporalio/workflow'
 import type * as allActivities from '../activities'
 
-const {
-    greetingActivity,
-    simulateCpuHeavyActivity,
-    simulateMemoryHeavyActivity,
-} = proxyActivities<typeof allActivities>({
-    startToCloseTimeout: '10 minutes',
-    heartbeatTimeout: '1 minute',
+const { greetingActivity } = proxyActivities<typeof allActivities>({
+    startToCloseTimeout: '1 minute',
 })
+
+const { simulateCpuHeavyActivity, simulateMemoryHeavyActivity } =
+    proxyActivities<typeof allActivities>({
+        taskQueue: 'heavy-duty-tasks',
+        startToCloseTimeout: '10 minutes',
+        heartbeatTimeout: '1 minute',
+    })
 
 export const WORKFLOW_THIRTEEN_NAME = 'WorkflowTypeThirteen'
 
-export interface WorkflowThirteenArgs {
+export interface HeavyWorkflowArgs {
     clientName: string
     cpuIterations: number
     cpuYieldFrequency: number
@@ -20,7 +22,7 @@ export interface WorkflowThirteenArgs {
 }
 
 export async function workflowThirteen(
-    args: WorkflowThirteenArgs
+    args: HeavyWorkflowArgs
 ): Promise<string> {
     log.info(`[WorkflowThirteen] Started for client: ${args.clientName}`, {
         ...args,
@@ -32,7 +34,7 @@ export async function workflowThirteen(
     log.info(`[WorkflowThirteen] Greeting: ${greeting}`)
 
     log.info(
-        `[WorkflowThirteen] Starting CPU-heavy task with ${args.cpuIterations} iterations.`
+        `[WorkflowThirteen] Delegating CPU-heavy task to specialized worker...`
     )
     const cpuResult = await simulateCpuHeavyActivity(
         `WF13-CPU-${args.clientName}`,
@@ -42,7 +44,7 @@ export async function workflowThirteen(
     log.info(`[WorkflowThirteen] CPU-heavy task result: ${cpuResult}`)
 
     log.info(
-        `[WorkflowThirteen] Starting Memory-heavy task with array size ${args.memoryArraySize}.`
+        `[WorkflowThirteen] Delegating Memory-heavy task to specialized worker...`
     )
     const memoryResult = await simulateMemoryHeavyActivity(
         `WF13-Memory-${args.clientName}`,

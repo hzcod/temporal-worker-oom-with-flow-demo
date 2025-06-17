@@ -1,25 +1,27 @@
 import { proxyActivities, log } from '@temporalio/workflow'
 import type * as allActivities from '../activities'
 
-const {
-    greetingActivity,
-    simulateCpuHeavyActivity,
-    simulateMemoryHeavyActivity,
-} = proxyActivities<typeof allActivities>({
-    startToCloseTimeout: '10 minutes',
-    heartbeatTimeout: '1 minute',
+const { greetingActivity } = proxyActivities<typeof allActivities>({
+    startToCloseTimeout: '1 minute',
 })
+
+const { simulateCpuHeavyActivity, simulateMemoryHeavyActivity } =
+    proxyActivities<typeof allActivities>({
+        taskQueue: 'heavy-duty-tasks',
+        startToCloseTimeout: '10 minutes',
+        heartbeatTimeout: '1 minute',
+    })
 
 export const WORKFLOW_THREE_NAME = 'WorkflowTypeThree'
 
-export interface WorkflowThreeArgs {
+export interface HeavyWorkflowArgs {
     clientName: string
     cpuIterations: number
     cpuYieldFrequency: number
     memoryArraySize: number
 }
 
-export async function workflowThree(args: WorkflowThreeArgs): Promise<string> {
+export async function workflowThree(args: HeavyWorkflowArgs): Promise<string> {
     log.info(`[WorkflowThree] Started for client: ${args.clientName}`, {
         ...args,
     })
@@ -30,7 +32,7 @@ export async function workflowThree(args: WorkflowThreeArgs): Promise<string> {
     log.info(`[WorkflowThree] Greeting: ${greeting}`)
 
     log.info(
-        `[WorkflowThree] Starting CPU-heavy task with ${args.cpuIterations} iterations.`
+        `[WorkflowThree] Delegating CPU-heavy task to specialized worker...`
     )
     const cpuResult = await simulateCpuHeavyActivity(
         `WF3-CPU-${args.clientName}`,
@@ -40,7 +42,7 @@ export async function workflowThree(args: WorkflowThreeArgs): Promise<string> {
     log.info(`[WorkflowThree] CPU-heavy task result: ${cpuResult}`)
 
     log.info(
-        `[WorkflowThree] Starting Memory-heavy task with array size ${args.memoryArraySize}.`
+        `[WorkflowThree] Delegating Memory-heavy task to specialized worker...`
     )
     const memoryResult = await simulateMemoryHeavyActivity(
         `WF3-Memory-${args.clientName}`,

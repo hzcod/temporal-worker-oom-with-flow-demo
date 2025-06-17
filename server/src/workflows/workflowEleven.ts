@@ -1,27 +1,27 @@
 import { proxyActivities, log } from '@temporalio/workflow'
 import type * as allActivities from '../activities'
 
-const {
-    greetingActivity,
-    simulateCpuHeavyActivity,
-    simulateMemoryHeavyActivity,
-} = proxyActivities<typeof allActivities>({
-    startToCloseTimeout: '10 minutes',
-    heartbeatTimeout: '1 minute',
+const { greetingActivity } = proxyActivities<typeof allActivities>({
+    startToCloseTimeout: '1 minute',
 })
+
+const { simulateCpuHeavyActivity, simulateMemoryHeavyActivity } =
+    proxyActivities<typeof allActivities>({
+        taskQueue: 'heavy-duty-tasks',
+        startToCloseTimeout: '10 minutes',
+        heartbeatTimeout: '1 minute',
+    })
 
 export const WORKFLOW_ELEVEN_NAME = 'WorkflowTypeEleven'
 
-export interface WorkflowElevenArgs {
+export interface HeavyWorkflowArgs {
     clientName: string
     cpuIterations: number
     cpuYieldFrequency: number
     memoryArraySize: number
 }
 
-export async function workflowEleven(
-    args: WorkflowElevenArgs
-): Promise<string> {
+export async function workflowEleven(args: HeavyWorkflowArgs): Promise<string> {
     log.info(`[WorkflowEleven] Started for client: ${args.clientName}`, {
         ...args,
     })
@@ -32,7 +32,7 @@ export async function workflowEleven(
     log.info(`[WorkflowEleven] Greeting: ${greeting}`)
 
     log.info(
-        `[WorkflowEleven] Starting CPU-heavy task with ${args.cpuIterations} iterations.`
+        `[WorkflowEleven] Delegating CPU-heavy task to specialized worker...`
     )
     const cpuResult = await simulateCpuHeavyActivity(
         `WF11-CPU-${args.clientName}`,
@@ -42,7 +42,7 @@ export async function workflowEleven(
     log.info(`[WorkflowEleven] CPU-heavy task result: ${cpuResult}`)
 
     log.info(
-        `[WorkflowEleven] Starting Memory-heavy task with array size ${args.memoryArraySize}.`
+        `[WorkflowEleven] Delegating Memory-heavy task to specialized worker...`
     )
     const memoryResult = await simulateMemoryHeavyActivity(
         `WF11-Memory-${args.clientName}`,

@@ -1,19 +1,20 @@
 import { proxyActivities, log } from '@temporalio/workflow'
 import type * as allActivities from '../activities'
 
-// Proxy all needed activities
-const {
-    greetingActivity,
-    // simulateLongTaskActivity,
-    simulateCpuHeavyActivity,
-    simulateMemoryHeavyActivity,
-} = proxyActivities<typeof allActivities>({
-    // It's good practice to set appropriate timeouts for each type of activity.
-    // For potentially long CPU/memory tasks, startToCloseTimeout is critical.
-    startToCloseTimeout: '10 minutes', // Increased for potentially longer tasks
-    heartbeatTimeout: '1 minute', // Important if activities heartbeat
-    // You can also define different retry policies if needed
+// --- Proxy Client for LIGHTWEIGHT Activities ---
+// This client sends tasks to the workflow's default task queue ('workflow-one-tasks').
+const { greetingActivity } = proxyActivities<typeof allActivities>({
+    startToCloseTimeout: '1 minute',
 })
+
+// --- Proxy Client for HEAVY Activities ---
+// This client is special. It sends tasks to a DEDICATED queue for heavy work.
+const { simulateCpuHeavyActivity, simulateMemoryHeavyActivity } =
+    proxyActivities<typeof allActivities>({
+        taskQueue: 'heavy-duty-tasks',
+        startToCloseTimeout: '10 minutes',
+        heartbeatTimeout: '1 minute',
+    })
 
 export const WORKFLOW_ONE_NAME = 'WorkflowTypeOne'
 
@@ -29,14 +30,14 @@ export async function workflowOne(args: WorkflowOneArgs): Promise<string> {
         ...args,
     })
 
+    // This call uses the 'greetingActivity' proxy and goes to the default queue.
     const greeting = await greetingActivity(
         `WorkflowOneUser-${args.clientName}`
     )
     log.info(`[WorkflowOne] Greeting: ${greeting}`)
 
-    log.info(
-        `[WorkflowOne] Starting CPU-heavy task with ${args.cpuIterations} iterations.`
-    )
+    // These calls use the heavy activity proxy and go to the 'heavy-duty-tasks' queue.
+    log.info(`[WorkflowOne] Starting CPU-heavy task on dedicated queue...`)
     const cpuResult = await simulateCpuHeavyActivity(
         `WF1-CPU-${args.clientName}`,
         args.cpuIterations,
@@ -44,9 +45,7 @@ export async function workflowOne(args: WorkflowOneArgs): Promise<string> {
     )
     log.info(`[WorkflowOne] CPU-heavy task result: ${cpuResult}`)
 
-    log.info(
-        `[WorkflowOne] Starting Memory-heavy task with array size ${args.memoryArraySize}.`
-    )
+    log.info(`[WorkflowOne] Starting Memory-heavy task on dedicated queue...`)
     const memoryResult = await simulateMemoryHeavyActivity(
         `WF1-Memory-${args.clientName}`,
         args.memoryArraySize

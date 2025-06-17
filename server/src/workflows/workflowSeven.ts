@@ -1,25 +1,27 @@
 import { proxyActivities, log } from '@temporalio/workflow'
 import type * as allActivities from '../activities'
 
-const {
-    greetingActivity,
-    simulateCpuHeavyActivity,
-    simulateMemoryHeavyActivity,
-} = proxyActivities<typeof allActivities>({
-    startToCloseTimeout: '10 minutes',
-    heartbeatTimeout: '1 minute',
+const { greetingActivity } = proxyActivities<typeof allActivities>({
+    startToCloseTimeout: '1 minute',
 })
+
+const { simulateCpuHeavyActivity, simulateMemoryHeavyActivity } =
+    proxyActivities<typeof allActivities>({
+        taskQueue: 'heavy-duty-tasks',
+        startToCloseTimeout: '10 minutes',
+        heartbeatTimeout: '1 minute',
+    })
 
 export const WORKFLOW_SEVEN_NAME = 'WorkflowTypeSeven'
 
-export interface WorkflowSevenArgs {
+export interface HeavyWorkflowArgs {
     clientName: string
     cpuIterations: number
     cpuYieldFrequency: number
     memoryArraySize: number
 }
 
-export async function workflowSeven(args: WorkflowSevenArgs): Promise<string> {
+export async function workflowSeven(args: HeavyWorkflowArgs): Promise<string> {
     log.info(`[WorkflowSeven] Started for client: ${args.clientName}`, {
         ...args,
     })
@@ -30,7 +32,7 @@ export async function workflowSeven(args: WorkflowSevenArgs): Promise<string> {
     log.info(`[WorkflowSeven] Greeting: ${greeting}`)
 
     log.info(
-        `[WorkflowSeven] Starting CPU-heavy task with ${args.cpuIterations} iterations.`
+        `[WorkflowSeven] Delegating CPU-heavy task to specialized worker...`
     )
     const cpuResult = await simulateCpuHeavyActivity(
         `WF7-CPU-${args.clientName}`,
@@ -40,7 +42,7 @@ export async function workflowSeven(args: WorkflowSevenArgs): Promise<string> {
     log.info(`[WorkflowSeven] CPU-heavy task result: ${cpuResult}`)
 
     log.info(
-        `[WorkflowSeven] Starting Memory-heavy task with array size ${args.memoryArraySize}.`
+        `[WorkflowSeven] Delegating Memory-heavy task to specialized worker...`
     )
     const memoryResult = await simulateMemoryHeavyActivity(
         `WF7-Memory-${args.clientName}`,

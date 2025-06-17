@@ -34,59 +34,81 @@ const allWorkerConfigurations = [
 ]
 
 export async function startAllWorkersInServer() {
-    console.log(
-        '[WorkerSetup] Starting the process to set up all workers using a loop...'
-    )
-
-    // Start timing for worker setup
+    console.log('[WorkerSetup] Starting the process to set up all workers...')
     console.time('AllWorkersSetupTime')
-
-    console.log(
-        '[WorkerSetup] Attempting to connect to Temporal server at localhost:7233...'
-    )
 
     const connection = await NativeConnection.connect({
         address: 'localhost:7233',
     })
-
     console.log('[WorkerSetup] Successfully connected to Temporal server.')
 
     const pathToWorkflows = require.resolve('./workflows')
 
+    // --- Manually create our activity groups here ---
+    const lightweightActivities = {
+        greetingActivity: allActivities.greetingActivity,
+    }
+    const intensiveActivities = {
+        simulateCpuHeavyActivity: allActivities.simulateCpuHeavyActivity,
+        simulateMemoryHeavyActivity: allActivities.simulateMemoryHeavyActivity,
+    }
+
+    // --- PHASE 1a: CREATE THE "WORKFLOW WORKERS" ---
     console.log(
-        `[WorkerSetup] Preparing to initialize ${allWorkerConfigurations.length} workers.`
+        `[WorkerSetup] Phase 1a: Creating ${allWorkerConfigurations.length} Workflow workers...`
     )
-
-    for (const config of allWorkerConfigurations) {
+    const workflowWorkerPromises = allWorkerConfigurations.map((config) => {
         const dedicatedTaskQueue = `workflow-${config.taskQueueSuffix}-tasks`
-
-        console.log(
-            `[WorkerSetup] Initializing worker for Task Queue: ${dedicatedTaskQueue} (for workflows like ${config.workflowMarkerName})`
-        )
-
-        const worker = await Worker.create({
-            connection: connection,
+        return Worker.create({
+            connection,
             namespace: 'default',
             taskQueue: dedicatedTaskQueue,
             workflowsPath: pathToWorkflows,
-            activities: allActivities,
+            // These workers ONLY know about simple, lightweight activities.
+            activities: lightweightActivities,
+            maxConcurrentWorkflowTaskExecutions: 20,
+            maxCachedWorkflows: 100,
         })
+    })
 
-        worker.run().catch((error) => {
-            console.error(
-                `[WorkerSetup] ERROR: Worker for Task Queue '${dedicatedTaskQueue}' encountered an error:`,
-                error
-            )
-        })
-
-        console.log(
-            `[WorkerSetup] Worker for Task Queue '${dedicatedTaskQueue}' has been started.`
-        )
-    }
+    // --- PHASE 1b: CREATE THE "ACTIVITY WORKER" ---
     console.log(
-        '[WorkerSetup] All workers have been initiated via the loop and are running.'
+        '[WorkerSetup] Phase 1b: Creating 1 special heavy-duty worker...'
     )
+    const heavyDutyWorkerPromise = Worker.create({
+        connection,
+        namespace: 'default',
+        taskQueue: 'heavy-duty-tasks', // Listens ONLY on the special queue
+        // This worker does NOT run workflows. It ONLY knows about intensive activities.
+        activities: intensiveActivities,
+        // Tuned for heavy work.
+        maxConcurrentActivityTaskExecutions: 5,
+    })
 
-    // End timing for workers
+    // Wait for all workers to be created
+    const [createdWorkflowWorkers, createdHeavyDutyWorker] = await Promise.all([
+        Promise.all(workflowWorkerPromises),
+        heavyDutyWorkerPromise,
+    ])
+    console.log('[WorkerSetup] Phase 1 Complete: All worker instances created.')
     console.timeEnd('AllWorkersSetupTime')
+
+    // --- PHASE 2: RUN ALL WORKERS ---
+    console.log(
+        '[WorkerSetup] Phase 2: Starting all workers to begin polling...'
+    )
+    for (const worker of createdWorkflowWorkers) {
+        worker
+            .run()
+            .catch((error) =>
+                console.error(
+                    `Workflow worker on queue ${worker.options.taskQueue} failed:`,
+                    error
+                )
+            )
+    }
+    createdHeavyDutyWorker
+        .run()
+        .catch((error) => console.error(`Heavy-duty worker failed:`, error))
+    console.log('[WorkerSetup] Phase 2 Complete: All workers are polling.')
 }

@@ -1,25 +1,27 @@
 import { proxyActivities, log } from '@temporalio/workflow'
 import type * as allActivities from '../activities'
 
-const {
-    greetingActivity,
-    simulateCpuHeavyActivity,
-    simulateMemoryHeavyActivity,
-} = proxyActivities<typeof allActivities>({
-    startToCloseTimeout: '10 minutes',
-    heartbeatTimeout: '1 minute',
+const { greetingActivity } = proxyActivities<typeof allActivities>({
+    startToCloseTimeout: '1 minute',
 })
+
+const { simulateCpuHeavyActivity, simulateMemoryHeavyActivity } =
+    proxyActivities<typeof allActivities>({
+        taskQueue: 'heavy-duty-tasks',
+        startToCloseTimeout: '10 minutes',
+        heartbeatTimeout: '1 minute',
+    })
 
 export const WORKFLOW_TEN_NAME = 'WorkflowTypeTen'
 
-export interface WorkflowTenArgs {
+export interface HeavyWorkflowArgs {
     clientName: string
     cpuIterations: number
     cpuYieldFrequency: number
     memoryArraySize: number
 }
 
-export async function workflowTen(args: WorkflowTenArgs): Promise<string> {
+export async function workflowTen(args: HeavyWorkflowArgs): Promise<string> {
     log.info(`[WorkflowTen] Started for client: ${args.clientName}`, {
         ...args,
     })
@@ -29,9 +31,7 @@ export async function workflowTen(args: WorkflowTenArgs): Promise<string> {
     )
     log.info(`[WorkflowTen] Greeting: ${greeting}`)
 
-    log.info(
-        `[WorkflowTen] Starting CPU-heavy task with ${args.cpuIterations} iterations.`
-    )
+    log.info(`[WorkflowTen] Delegating CPU-heavy task to specialized worker...`)
     const cpuResult = await simulateCpuHeavyActivity(
         `WF10-CPU-${args.clientName}`,
         args.cpuIterations,
@@ -40,7 +40,7 @@ export async function workflowTen(args: WorkflowTenArgs): Promise<string> {
     log.info(`[WorkflowTen] CPU-heavy task result: ${cpuResult}`)
 
     log.info(
-        `[WorkflowTen] Starting Memory-heavy task with array size ${args.memoryArraySize}.`
+        `[WorkflowTen] Delegating Memory-heavy task to specialized worker...`
     )
     const memoryResult = await simulateMemoryHeavyActivity(
         `WF10-Memory-${args.clientName}`,
