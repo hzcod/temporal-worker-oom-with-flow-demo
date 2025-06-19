@@ -6,8 +6,9 @@
     "scripts": {
         "test": "echo \"Error: no test specified\" && exit 1",
         "build": "tsc",
-        "start": "node dist/server.js",
-        "dev": "node --max-old-space-size=4096 -r ts-node/register src/server.ts"
+        "start:workflows": "node --max-old-space-size=4096 dist/server.js",
+        "dev:workflows": "cross-env WORKER_ROLE=WORKFLOW node --max-old-space-size=4096 -r ts-node/register src/server.ts",
+        "dev:activities": "cross-env WORKER_ROLE=ACTIVITY node --max-old-space-size=4096 -r ts-node/register src/server.ts"
     },
     "keywords": [],
     "author": "",
@@ -22,6 +23,7 @@
     },
     "devDependencies": {
         "@types/express": "^5.0.2",
-        "@types/node": "^22.15.27"
+        "@types/node": "^22.15.27",
+        "cross-env": "^7.0.3"
     }
 }

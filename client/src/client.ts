@@ -1,7 +1,6 @@
 import { Connection, Client } from '@temporalio/client'
 
-// const INSTANCES_PER_WORKFLOW = 5
-const INSTANCES_PER_WORKFLOW = 2
+const INSTANCES_PER_WORKFLOW = 5
 
 const allWorkflowClientConfigs = [
     {

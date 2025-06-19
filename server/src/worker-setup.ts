@@ -34,8 +34,10 @@ const allWorkerConfigurations = [
 ]
 
 export async function startAllWorkersInServer() {
-    console.log('[WorkerSetup] Starting the process to set up all workers...')
-    console.time('AllWorkersSetupTime')
+    const workerRole = process.env.WORKER_ROLE || 'ALL'
+
+    console.log(`[WorkerSetup] Starting process with ROLE: ${workerRole}`)
+    console.time('WorkerSetupTime')
 
     const connection = await NativeConnection.connect({
         address: 'localhost:7233',
@@ -43,8 +45,6 @@ export async function startAllWorkersInServer() {
     console.log('[WorkerSetup] Successfully connected to Temporal server.')
 
     const pathToWorkflows = require.resolve('./workflows')
-
-    // --- Manually create our activity groups here ---
     const lightweightActivities = {
         greetingActivity: allActivities.greetingActivity,
     }
@@ -53,62 +53,52 @@ export async function startAllWorkersInServer() {
         simulateMemoryHeavyActivity: allActivities.simulateMemoryHeavyActivity,
     }
 
-    // --- PHASE 1a: CREATE THE "WORKFLOW WORKERS" ---
-    console.log(
-        `[WorkerSetup] Phase 1a: Creating ${allWorkerConfigurations.length} Workflow workers...`
-    )
-    const workflowWorkerPromises = allWorkerConfigurations.map((config) => {
-        const dedicatedTaskQueue = `workflow-${config.taskQueueSuffix}-tasks`
-        return Worker.create({
+    if (workerRole === 'WORKFLOW' || workerRole === 'ALL') {
+        console.log(
+            `[WorkerSetup] Initializing ${allWorkerConfigurations.length} WORKFLOW workers...`
+        )
+        const workflowWorkerPromises = allWorkerConfigurations.map((config) => {
+            const dedicatedTaskQueue = `workflow-${config.taskQueueSuffix}-tasks`
+            return Worker.create({
+                connection,
+                namespace: 'default',
+                taskQueue: dedicatedTaskQueue,
+                workflowsPath: pathToWorkflows,
+                activities: lightweightActivities,
+                maxConcurrentWorkflowTaskExecutions: 20,
+                maxCachedWorkflows: 100,
+            })
+        })
+        const createdWorkflowWorkers = await Promise.all(workflowWorkerPromises)
+        for (const worker of createdWorkflowWorkers) {
+            worker
+                .run()
+                .catch((error) =>
+                    console.error(
+                        `Workflow worker on queue ${worker.options.taskQueue} failed:`,
+                        error
+                    )
+                )
+        }
+        console.log('[WorkerSetup] All WORKFLOW workers are now polling.')
+    }
+
+    if (workerRole === 'ACTIVITY' || workerRole === 'ALL') {
+        console.log(
+            '[WorkerSetup] Initializing 1 HEAVY-DUTY ACTIVITY worker...'
+        )
+        const heavyDutyWorker = await Worker.create({
             connection,
             namespace: 'default',
-            taskQueue: dedicatedTaskQueue,
-            workflowsPath: pathToWorkflows,
-            // These workers ONLY know about simple, lightweight activities.
-            activities: lightweightActivities,
-            maxConcurrentWorkflowTaskExecutions: 20,
-            maxCachedWorkflows: 100,
+            taskQueue: 'heavy-duty-tasks',
+            activities: intensiveActivities,
+            maxConcurrentActivityTaskExecutions: 5,
         })
-    })
-
-    // --- PHASE 1b: CREATE THE "ACTIVITY WORKER" ---
-    console.log(
-        '[WorkerSetup] Phase 1b: Creating 1 special heavy-duty worker...'
-    )
-    const heavyDutyWorkerPromise = Worker.create({
-        connection,
-        namespace: 'default',
-        taskQueue: 'heavy-duty-tasks', // Listens ONLY on the special queue
-        // This worker does NOT run workflows. It ONLY knows about intensive activities.
-        activities: intensiveActivities,
-        // Tuned for heavy work.
-        maxConcurrentActivityTaskExecutions: 5,
-    })
-
-    // Wait for all workers to be created
-    const [createdWorkflowWorkers, createdHeavyDutyWorker] = await Promise.all([
-        Promise.all(workflowWorkerPromises),
-        heavyDutyWorkerPromise,
-    ])
-    console.log('[WorkerSetup] Phase 1 Complete: All worker instances created.')
-    console.timeEnd('AllWorkersSetupTime')
-
-    // --- PHASE 2: RUN ALL WORKERS ---
-    console.log(
-        '[WorkerSetup] Phase 2: Starting all workers to begin polling...'
-    )
-    for (const worker of createdWorkflowWorkers) {
-        worker
+        heavyDutyWorker
             .run()
-            .catch((error) =>
-                console.error(
-                    `Workflow worker on queue ${worker.options.taskQueue} failed:`,
-                    error
-                )
-            )
+            .catch((error) => console.error(`Heavy-duty worker failed:`, error))
+        console.log('[WorkerSetup] HEAVY-DUTY ACTIVITY worker is now polling.')
     }
-    createdHeavyDutyWorker
-        .run()
-        .catch((error) => console.error(`Heavy-duty worker failed:`, error))
-    console.log('[WorkerSetup] Phase 2 Complete: All workers are polling.')
+
+    console.timeEnd('WorkerSetupTime')
 }
